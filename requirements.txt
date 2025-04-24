@@ -14,7 +14,6 @@ google-auth-httplib2>=0.1.0
 google-auth-oauthlib>=1.0.0
 
 # Search and tools dependencies
-duckduckgo-search>=4.1.0
 beautifulsoup4>=4.12.0
 lxml>=4.9.0
 
@@ -35,3 +34,9 @@ markupsafe>=2.1.0
 # Additional utilities
 tzlocal>=5.0.0
 pytz>=2023.0
+
+# Streamlit frontend
+streamlit>=1.32.0
+streamlit-chat>=0.1.1
+streamlit-extras>=0.3.6
+streamlit-cookies-manager>=0.3.0

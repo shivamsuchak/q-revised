@@ -367,3 +367,256 @@ def education_endpoint():
         return jsonify({'response': response})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@api_blueprint.route('/university-courses', methods=['GET', 'POST'])
+def university_courses_endpoint():
+    """Handle university course recommendation requests."""
+    if request.method == 'GET':
+        # For GET requests, return a simple HTML form for testing
+        return '''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>University Course Recommender</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
+                .container { max-width: 800px; margin: 0 auto; }
+                input, select, textarea { width: 100%; margin-bottom: 10px; padding: 8px; }
+                textarea { height: 100px; }
+                button { padding: 10px 15px; background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+                #response { margin-top: 20px; white-space: pre-wrap; background-color: #f5f5f5; padding: 15px; border-radius: 5px; }
+                .form-group { margin-bottom: 15px; }
+                .tab-content { display: none; }
+                .tab-content.active { display: block; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>University Course Recommender</h1>
+                <p>Search for courses at specific universities or get personalized recommendations.</p>
+                
+                <div class="tabs">
+                    <button id="tab-search" class="tab-btn active">Search University Courses</button>
+                    <button id="tab-info" class="tab-btn">University Information</button>
+                    <button id="tab-recommend" class="tab-btn">Get Personal Recommendations</button>
+                </div>
+                
+                <div id="search-tab" class="tab-content active">
+                    <h2>Search for University Courses</h2>
+                    <form id="searchForm">
+                        <div class="form-group">
+                            <label for="university">University Name:</label>
+                            <input type="text" id="university" name="university" required placeholder="e.g., Stanford University">
+                        </div>
+                        <div class="form-group">
+                            <label for="subject">Subject or Department (optional):</label>
+                            <input type="text" id="subject" name="subject" placeholder="e.g., Computer Science, Business, Engineering">
+                        </div>
+                        <button type="submit">Search Courses</button>
+                    </form>
+                </div>
+                
+                <div id="info-tab" class="tab-content">
+                    <h2>Get University Information</h2>
+                    <form id="infoForm">
+                        <div class="form-group">
+                            <label for="uni-name">University Name:</label>
+                            <input type="text" id="uni-name" name="uni-name" required placeholder="e.g., Harvard University">
+                        </div>
+                        <button type="submit">Get Information</button>
+                    </form>
+                </div>
+                
+                <div id="recommend-tab" class="tab-content">
+                    <h2>Get Personalized Course Recommendations</h2>
+                    <form id="recommendForm">
+                        <div class="form-group">
+                            <label for="interests">Your Interests:</label>
+                            <textarea id="interests" name="interests" required placeholder="e.g., artificial intelligence, data analysis, machine learning"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="academic-level">Academic Level:</label>
+                            <select id="academic-level" name="academic-level">
+                                <option value="undergraduate">Undergraduate</option>
+                                <option value="graduate">Graduate</option>
+                                <option value="phd">PhD</option>
+                                <option value="professional">Professional/Continuing Education</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="career-goal">Career Goal (optional):</label>
+                            <input type="text" id="career-goal" name="career-goal" placeholder="e.g., Data Scientist, Software Engineer">
+                        </div>
+                        <div class="form-group">
+                            <label for="specific-university">Specific University (optional):</label>
+                            <input type="text" id="specific-university" name="specific-university" placeholder="e.g., MIT, Stanford">
+                        </div>
+                        <button type="submit">Get Recommendations</button>
+                    </form>
+                </div>
+                
+                <div id="loading" style="display: none;">Processing your request...</div>
+                <div id="response"></div>
+            </div>
+            
+            <script>
+                // Tab switching functionality
+                document.querySelectorAll('.tab-btn').forEach(button => {
+                    button.addEventListener('click', function() {
+                        // Remove active class from all buttons and content divs
+                        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+                        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+                        
+                        // Add active class to clicked button
+                        this.classList.add('active');
+                        
+                        // Determine which tab to show
+                        const tabId = this.id.split('-')[1];
+                        document.getElementById(tabId + '-tab').classList.add('active');
+                    });
+                });
+                
+                // Search form submission
+                document.getElementById('searchForm').addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const university = document.getElementById('university').value;
+                    const subject = document.getElementById('subject').value;
+                    
+                    makeApiCall('/api/university-courses/search', {
+                        university: university,
+                        subject: subject
+                    });
+                });
+                
+                // Info form submission
+                document.getElementById('infoForm').addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const university = document.getElementById('uni-name').value;
+                    
+                    makeApiCall('/api/university-courses/info', {
+                        university: university
+                    });
+                });
+                
+                // Recommend form submission
+                document.getElementById('recommendForm').addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    const interests = document.getElementById('interests').value;
+                    const academicLevel = document.getElementById('academic-level').value;
+                    const careerGoal = document.getElementById('career-goal').value;
+                    const specificUniversity = document.getElementById('specific-university').value;
+                    
+                    makeApiCall('/api/university-courses/recommend', {
+                        interests: interests,
+                        academic_level: academicLevel,
+                        career_goal: careerGoal,
+                        specific_university: specificUniversity
+                    });
+                });
+                
+                function makeApiCall(endpoint, data) {
+                    const loadingDiv = document.getElementById('loading');
+                    const responseDiv = document.getElementById('response');
+                    
+                    loadingDiv.style.display = 'block';
+                    responseDiv.innerHTML = '';
+                    
+                    fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(data)
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        loadingDiv.style.display = 'none';
+                        responseDiv.innerHTML = data.response || data.result || JSON.stringify(data);
+                    })
+                    .catch(error => {
+                        loadingDiv.style.display = 'none';
+                        responseDiv.innerHTML = 'Error: ' + error;
+                    });
+                }
+            </script>
+        </body>
+        </html>
+        '''
+    
+    # Handle POST request - General course recommendation query
+    data = request.json
+    
+    if not data:
+        return jsonify({'error': 'Missing data'}), 400
+    
+    try:
+        query = data.get('query', '')
+        university = data.get('university', '')
+        
+        if query:
+            from university_course_recommender import UniversityCourseRecommender
+            recommender = UniversityCourseRecommender()
+            response = recommender.get_course_recommendations(query, university)
+            return jsonify({'response': response})
+        else:
+            return jsonify({'error': 'No query provided'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@api_blueprint.route('/university-courses/search', methods=['POST'])
+def university_courses_search_endpoint():
+    """Search for courses at a specific university."""
+    data = request.json
+    
+    if not data or 'university' not in data:
+        return jsonify({'error': 'No university specified'}), 400
+    
+    try:
+        university = data['university']
+        subject = data.get('subject', '')
+        
+        from university_course_recommender import get_university_courses
+        result = get_university_courses(university, subject)
+        return jsonify({'result': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@api_blueprint.route('/university-courses/info', methods=['POST'])
+def university_info_endpoint():
+    """Get information about a specific university."""
+    data = request.json
+    
+    if not data or 'university' not in data:
+        return jsonify({'error': 'No university specified'}), 400
+    
+    try:
+        university = data['university']
+        
+        from university_course_recommender import get_university_info
+        result = get_university_info(university)
+        return jsonify({'result': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@api_blueprint.route('/university-courses/recommend', methods=['POST'])
+def university_recommendations_endpoint():
+    """Get personalized course recommendations."""
+    data = request.json
+    
+    if not data or 'interests' not in data:
+        return jsonify({'error': 'No interests specified'}), 400
+    
+    try:
+        interests = data['interests']
+        academic_level = data.get('academic_level', 'undergraduate')
+        career_goal = data.get('career_goal', '')
+        specific_university = data.get('specific_university', '')
+        
+        from university_course_recommender import get_personalized_recommendations
+        result = get_personalized_recommendations(interests, academic_level, career_goal, specific_university)
+        return jsonify({'result': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

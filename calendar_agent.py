@@ -9,6 +9,7 @@ mock responses when needed.
 import os
 import io
 import re
+import time
 from contextlib import redirect_stdout
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
@@ -16,6 +17,7 @@ from agno.agent import Agent
 from agno.models.azure import AzureOpenAI
 from agno.models.openai.chat import OpenAIChat
 from agno.tools.googlecalendar import GoogleCalendarTools
+from agent_memory import memory_manager
 
 # Load environment variables
 load_dotenv()
@@ -54,6 +56,7 @@ class CalendarAgent:
     
     def __init__(self):
         """Initialize the calendar agent with the best available model."""
+        self.agent_id = "calendar_agent"
         self.agent = self._create_agent()
         self.using_real_implementation = self.agent is not None
         print(f"Calendar Agent initialized. Using real API: {self.using_real_implementation}")
@@ -82,10 +85,14 @@ class CalendarAgent:
                 token_file=token_path
             )
             
+            # Get memory from the memory manager for persistence
+            memory = memory_manager.get_memory(self.agent_id)
+            
             # Create an agent with Google Calendar tools
             return Agent(
                 model=model,
                 tools=[calendar_tools],
+                memory=memory,
                 description="You are a calendar management assistant that helps users manage their Google Calendar events.",
                 instructions=[
                     "Help users manage their Google Calendar by creating, editing, viewing, and deleting events.",
@@ -119,7 +126,7 @@ class CalendarAgent:
         return None
         
     def _get_azure_model(self):
-        """Initialize Azure OpenAI model with error handling."""
+        """Initialize Azure OpenAI model with improved error handling."""
         try:
             api_key = os.getenv("AZURE_OPENAI_API_KEY")
             endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
@@ -129,27 +136,43 @@ class CalendarAgent:
                 print("Azure OpenAI credentials missing")
                 return None
                 
+            # Ensure proper formatting of the endpoint URL
+            if not endpoint.startswith("https://"):
+                endpoint = f"https://{endpoint}"
+            if not endpoint.endswith("/"):
+                endpoint = f"{endpoint}/"
+                
             print(f"Attempting to initialize Azure OpenAI with endpoint: {endpoint}")
-            model = AzureOpenAI(
-                api_key=api_key,
-                azure_endpoint=endpoint,
-                id=deployment
-            )
             
-            # Test with a simple query to verify connection
-            test_agent = Agent(model=model)
-            with io.StringIO() as f:
-                with redirect_stdout(f):
-                    test_agent.print_response("Hello (test message)")
+            # Create the model with retry mechanism
+            for attempt in range(3):
+                try:
+                    model = AzureOpenAI(
+                        api_key=api_key,
+                        azure_endpoint=endpoint,
+                        id=deployment
+                    )
                     
-            print("Successfully connected to Azure OpenAI API")
-            return model
+                    # Test with a simple query to verify connection
+                    test_agent = Agent(model=model)
+                    with io.StringIO() as f:
+                        with redirect_stdout(f):
+                            test_agent.print_response("Test")
+                            
+                    print("Successfully connected to Azure OpenAI API")
+                    return model
+                except Exception as e:
+                    print(f"Azure OpenAI connection attempt {attempt+1}/3 failed: {str(e)}")
+                    time.sleep(1)  # Wait before retry
+                    
+            print("All Azure OpenAI connection attempts failed")
+            return None
         except Exception as e:
-            print(f"Azure OpenAI connection failed: {str(e)}")
+            print(f"Azure OpenAI setup failed: {str(e)}")
             return None
             
     def _get_openai_model(self):
-        """Initialize standard OpenAI model with error handling."""
+        """Initialize standard OpenAI model with improved error handling."""
         try:
             api_key = os.getenv("OPENAI_API_KEY")
             
@@ -158,18 +181,28 @@ class CalendarAgent:
                 return None
                 
             print("Attempting to initialize standard OpenAI")
-            model = OpenAIChat(api_key=api_key, id="gpt-3.5-turbo")
             
-            # Test with a simple query
-            test_agent = Agent(model=model)
-            with io.StringIO() as f:
-                with redirect_stdout(f):
-                    test_agent.print_response("Hello (test message)")
+            # Create the model with retry mechanism
+            for attempt in range(3):
+                try:
+                    model = OpenAIChat(api_key=api_key, id="gpt-3.5-turbo")
                     
-            print("Successfully connected to OpenAI API")
-            return model
+                    # Test with a simple query
+                    test_agent = Agent(model=model)
+                    with io.StringIO() as f:
+                        with redirect_stdout(f):
+                            test_agent.print_response("Test")
+                            
+                    print("Successfully connected to OpenAI API")
+                    return model
+                except Exception as e:
+                    print(f"OpenAI connection attempt {attempt+1}/3 failed: {str(e)}")
+                    time.sleep(1)  # Wait between retries
+                    
+            print("All OpenAI connection attempts failed")
+            return None
         except Exception as e:
-            print(f"OpenAI connection failed: {str(e)}")
+            print(f"OpenAI setup failed: {str(e)}")
             return None
     
     def _enhance_calendar_query(self, query: str) -> str:
@@ -242,13 +275,25 @@ class CalendarAgent:
     
     def get_response(self, query: str) -> str:
         """Get a response from the calendar agent for the given query."""
+        # Add user message to memory
+        memory_manager.add_user_message(self.agent_id, query)
+        
         if not self.using_real_implementation:
             # Fall back to mock implementation if real agent isn't available
-            return self._mock_response(query)
+            response = self._mock_response(query)
+            memory_manager.add_ai_message(self.agent_id, response)
+            return response
             
         try:
-            # Preprocess query to ensure it's clear what calendar action is needed
-            enhanced_query = self._enhance_calendar_query(query)
+            # Get conversation history for context
+            history = memory_manager.get_conversation_history(self.agent_id)
+            
+            # If we have conversation history, add it to the query for context
+            if history and len(memory_manager.get_memory(self.agent_id).messages) > 2:
+                enhanced_query = f"Previous conversation:\n{history}\n\nNew request: {query}"
+            else:
+                # Preprocess query to ensure it's clear what calendar action is needed
+                enhanced_query = self._enhance_calendar_query(query)
             
             # Capture the agent's response
             f = io.StringIO()
@@ -258,10 +303,15 @@ class CalendarAgent:
             response = f.getvalue()
             # Extract only the important content from the response
             clean_response = extract_important_content(response)
+            
+            # Add the response to memory
+            memory_manager.add_ai_message(self.agent_id, clean_response)
             return clean_response
         except Exception as e:
             print(f"Error using calendar agent: {str(e)}")
-            return f"I encountered an error while trying to manage your calendar: {str(e)}\n\nPlease check your Google Calendar permissions and try again."
+            error_msg = f"I encountered an error while trying to manage your calendar: {str(e)}\n\nPlease check your Google Calendar permissions and try again."
+            # Don't add error responses to memory
+            return error_msg
     
     def _mock_response(self, query: str) -> str:
         """Provide a mock calendar response when real calendar isn't available."""
