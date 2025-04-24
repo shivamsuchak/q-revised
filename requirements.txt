@@ -1,0 +1,37 @@
+# Core dependencies
+flask>=3.0.0
+flask-cors>=5.0.0
+python-dotenv>=1.0.0
+
+# Agent and LLM dependencies
+agno>=1.4.0
+openai>=1.0.0
+azure-openai>=1.0.0
+
+# Google Calendar integration
+google-api-python-client>=2.0.0
+google-auth-httplib2>=0.1.0
+google-auth-oauthlib>=1.0.0
+
+# Search and tools dependencies
+duckduckgo-search>=4.1.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# Team coordination
+agno-teams>=1.0.0
+
+# Text processing and parsing
+markdown>=3.5.0
+regex>=2023.0.0
+pyyaml>=6.0.0
+jsonschema>=4.0.0
+
+# Web utilities
+requests>=2.30.0
+aiohttp>=3.8.0
+markupsafe>=2.1.0
+
+# Additional utilities
+tzlocal>=5.0.0
+pytz>=2023.0
